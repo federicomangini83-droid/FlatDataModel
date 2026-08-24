@@ -1,55 +1,144 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FinRep Flat Data Model</title>
-<link rel="stylesheet" href="css/style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Trasforma un workbook FinRep in un modello dati flat CSV direttamente nel browser." />
+  <title>FinRep Flat Data Model Creator</title>
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>FinRep Flat Data Model Creator</h1>
-    <p class="subtitle">Tutta l'elaborazione avviene nel tuo browser: nessun file viene mai inviato a un server.</p>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <a class="brand" href="#" aria-label="FinRep Flat Data Model Creator">
+        <span class="brand__mark" aria-hidden="true">F</span>
+        <span>
+          <strong>FinRep</strong>
+          <small>Flat Data Model Creator</small>
+        </span>
+      </a>
+      <span class="privacy-badge">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4.5 5v5.6c0 4.8 3.2 9.2 7.5 10.4 4.3-1.2 7.5-5.6 7.5-10.4V5L12 2Zm0 2.2 5.3 2.1v4.3c0 3.6-2.2 7-5.3 8.1-3.1-1.1-5.3-4.5-5.3-8.1V6.3L12 4.2Zm-1 4v3H8.8v2H11v2.2h2v-2.2h2.2v-2H13v-3h-2Z"/></svg>
+        Elaborazione locale e sicura
+      </span>
+    </div>
+  </header>
 
-    <section class="card">
-      <label for="fileInput">1. Carica il file Excel (.xlsx)</label>
-      <input type="file" id="fileInput" accept=".xlsx,.xls" />
-    </section>
-
-    <section class="card">
-      <label for="startName">2. Parametri</label>
-      <div class="params">
-        <div>
-          <label for="startName">Start name</label>
-          <input type="text" id="startName" value="FR_" />
-        </div>
-        <div>
-          <label for="endName">End name</label>
-          <input type="text" id="endName" value="_420" />
-        </div>
-        <div>
-          <label for="fileNamePrefix">Nome file (prefix)</label>
-          <input type="text" id="fileNamePrefix" value="TGK_MAPPING" />
-        </div>
+  <main class="container">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">DATA TRANSFORMATION TOOL</p>
+        <h1>Crea il tuo Flat Data Model</h1>
+        <p class="hero__text">Carica un workbook FinRep, configura il nome dell’output e genera il CSV. Il file rimane sempre nel browser.</p>
+      </div>
+      <div class="hero__status" aria-label="Flusso in tre passaggi">
+        <div><span>1</span> Carica</div>
+        <i></i>
+        <div><span>2</span> Configura</div>
+        <i></i>
+        <div><span>3</span> Esporta</div>
       </div>
     </section>
 
-    <section class="card">
-      <button id="processBtn">Elabora file</button>
-      <div id="spinner" class="spinner hidden"></div>
-    </section>
+    <section id="errorBox" class="alert alert--error hidden" role="alert" aria-live="assertive"></section>
 
-    <section id="errorBox" class="error hidden"></section>
+    <div class="workspace">
+      <section class="panel">
+        <div class="section-heading">
+          <span class="step-number">1</span>
+          <div>
+            <h2>Carica il workbook</h2>
+            <p>Formati supportati: .xlsx e .xls</p>
+          </div>
+        </div>
 
-    <section id="resultBox" class="hidden">
-      <h2>Risultato</h2>
-      <p id="recordCount"></p>
-      <div class="table-wrapper">
+        <label class="dropzone" id="dropzone" for="fileInput">
+          <input type="file" id="fileInput" accept=".xlsx,.xls" />
+          <span class="upload-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 5.5 8 6 6 0 0 0 6 20h13a5 5 0 0 0 .35-9.96ZM13 13v4h-2v-4H8l4-4 4 4h-3Z"/></svg>
+          </span>
+          <strong id="uploadTitle">Trascina qui il file Excel</strong>
+          <span id="uploadHint">oppure <u>selezionalo dal computer</u></span>
+          <span id="fileMeta" class="file-meta hidden"></span>
+        </label>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <span class="step-number">2</span>
+          <div>
+            <h2>Configura l’output</h2>
+            <p>Definisci le parti che compongono il nome del CSV.</p>
+          </div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="startName">Prefisso iniziale</label>
+            <input type="text" id="startName" value="FR_" spellcheck="false" />
+            <small>Esempio: FR_</small>
+          </div>
+          <div class="field">
+            <label for="fileNamePrefix">Nome del file</label>
+            <input type="text" id="fileNamePrefix" value="TGK_MAPPING" spellcheck="false" />
+            <small>Parte principale del nome</small>
+          </div>
+          <div class="field">
+            <label for="endName">Suffisso finale</label>
+            <input type="text" id="endName" value="_420" spellcheck="false" />
+            <small>Esempio: _420</small>
+          </div>
+        </div>
+
+        <div class="filename-preview">
+          <span>Nome file generato</span>
+          <code id="fileNamePreview">FR_TGK_MAPPING_420.csv</code>
+        </div>
+      </section>
+
+      <section class="action-panel">
+        <div>
+          <strong>Pronto per l’elaborazione?</strong>
+          <span>Controlla il file e i parametri prima di procedere.</span>
+        </div>
+        <button id="processBtn" class="button button--primary" type="button">
+          <span id="processBtnLabel">Elabora file</span>
+          <span id="spinner" class="spinner hidden" aria-hidden="true"></span>
+          <svg class="button__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6-1.4 1.4 4.6 4.6-4.6 4.6L9 18Z"/></svg>
+        </button>
+      </section>
+    </div>
+
+    <section id="resultBox" class="results hidden" aria-live="polite">
+      <div class="results__header">
+        <div class="success-icon" aria-hidden="true">✓</div>
+        <div>
+          <p class="eyebrow">ELABORAZIONE COMPLETATA</p>
+          <h2>Il modello è pronto</h2>
+          <p id="recordCount"></p>
+        </div>
+        <button id="downloadBtn" class="button button--success" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3h2v10l3.5-3.5 1.4 1.4-5.9 5.9-5.9-5.9 1.4-1.4L11 13V3Zm-6 16h14v2H5v-2Z"/></svg>
+          Scarica CSV
+        </button>
+      </div>
+
+      <div class="table-heading">
+        <div>
+          <h3>Anteprima dati</h3>
+          <p>Sono mostrate al massimo le prime 200 righe.</p>
+        </div>
+      </div>
+      <div class="table-wrapper" tabindex="0">
         <table id="resultTable"></table>
       </div>
-      <button id="downloadBtn">Scarica CSV</button>
     </section>
-  </div>
+  </main>
+
+  <footer class="footer">
+    <span>FinRep Flat Data Model Creator</span>
+    <span>I file caricati non vengono inviati a server esterni.</span>
+  </footer>
 
   <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
   <script src="js/finrepProcessor.js"></script>
