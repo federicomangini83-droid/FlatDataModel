@@ -240,4 +240,4 @@ downloadBtn.addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
-updatePreview();
+updatePreview(); 
