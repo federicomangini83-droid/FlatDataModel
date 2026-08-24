@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinRep Flat Data Model Creator</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>FinRep Flat Data Model Creator</h1>
+    <p class="subtitle">Elaborazione locale nel browser con il motore Python originale.</p>
+
+    <section class="card">
+      <label for="fileInput">1. Carica il file Excel (.xlsx)</label>
+      <input type="file" id="fileInput" accept=".xlsx" />
+    </section>
+
+    <section class="card">
+      <label>2. Parametri</label>
+      <div class="params">
+        <div class="field">
+          <label for="startName">Start name</label>
+          <input type="text" id="startName" value="FR_" />
+        </div>
+        <div class="field">
+          <label for="fileNamePrefix">Nome file (prefix)</label>
+          <input type="text" id="fileNamePrefix" value="TGK_MAPPING" />
+        </div>
+        <div class="field">
+          <label for="endName">End name</label>
+          <input type="text" id="endName" value="_420" />
+        </div>
+      </div>
+      <p class="hint">File generato: <code id="fileNamePreview">FR_TGK_MAPPING_420.csv</code></p>
+    </section>
+
+    <section class="card action-row">
+      <button id="processBtn" disabled>Elabora file</button>
+      <span id="spinner" class="spinner hidden"></span>
+    </section>
+
+    <section id="errorBox" class="error hidden" role="alert"></section>
+
+    <section id="resultBox" class="card hidden">
+      <h2>Risultato</h2>
+      <p id="recordCount"></p>
+      <div class="table-wrapper">
+        <table id="resultTable"></table>
+      </div>
+      <div class="result-actions">
+        <button id="downloadBtn" class="secondary">Scarica CSV</button>
+        <button id="saveGithubBtn">Salva nello storico GitHub</button>
+      </div>
+      <p id="archiveStatus" class="hint"></p>
+    </section>
+
+    <!-- Archivio GitHub -->
+    <section class="card">
+      <div class="history-head">
+        <div>
+          <h2>Storico CSV su GitHub</h2>
+          <p class="hint">I CSV vengono salvati nella cartella <code>csv-history/</code> del repository.</p>
+        </div>
+        <button id="refreshHistoryBtn" class="secondary">Aggiorna elenco</button>
+      </div>
+
+      <details id="githubConfig" class="gh-config">
+        <summary>Configurazione accesso GitHub (necessaria per salvare ed eliminare)</summary>
+        <div class="gh-grid">
+          <div class="field">
+            <label for="ghOwner">Owner</label>
+            <input type="text" id="ghOwner" value="federicomangini83-droid" />
+          </div>
+          <div class="field">
+            <label for="ghRepo">Repository</label>
+            <input type="text" id="ghRepo" value="FlatDataModel" />
+          </div>
+          <div class="field">
+            <label for="ghBranch">Branch</label>
+            <input type="text" id="ghBranch" value="main" />
+          </div>
+          <div class="field">
+            <label for="ghFolder">Cartella</label>
+            <input type="text" id="ghFolder" value="csv-history" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="ghToken">Token GitHub (fine-grained, permesso Contents: Read and write)</label>
+          <input type="password" id="ghToken" placeholder="github_pat_..." autocomplete="off" />
+        </div>
+        <label class="remember">
+          <input type="checkbox" id="ghRemember" />
+          Ricorda il token in questo browser (sconsigliato su PC condivisi)
+        </label>
+        <p class="hint">Il token resta solo nel tuo browser e non viene mai salvato nel repository.</p>
+      </details>
+
+      <div id="historyError" class="error hidden"></div>
+      <div class="table-wrapper">
+        <table id="historyTable">
+          <thead>
+            <tr><th>Nome file</th><th>Dimensione</th><th>Azioni</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.28.3/full/pyodide.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>

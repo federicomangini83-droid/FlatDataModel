@@ -1,0 +1,105 @@
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: #f5f6f8;
+  margin: 0;
+  color: #1f2328;
+}
+
+.container { max-width: 1000px; margin: 0 auto; padding: 2rem 1.5rem; }
+h1 { margin-bottom: 0.25rem; }
+.subtitle { color: #57606a; margin-top: 0; margin-bottom: 1.5rem; }
+
+.card {
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+.card h2 { margin-top: 0; font-size: 1.1rem; }
+
+label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+
+input[type="text"], input[type="password"], input[type="file"] {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: #fff;
+}
+input:focus { outline: none; border-color: #1769aa; box-shadow: 0 0 0 3px rgba(23,105,170,0.15); }
+
+.params, .gh-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+.gh-grid { grid-template-columns: repeat(4, 1fr); }
+.field label { font-size: 0.85rem; }
+
+.hint { color: #57606a; font-size: 0.85rem; margin: 0.6rem 0 0; }
+.hint code, .card code {
+  background: #f6f8fa; border: 1px solid #d8dee4;
+  border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85rem;
+}
+
+button {
+  background: #1f883d;
+  color: #fff;
+  border: none;
+  padding: 0.6rem 1.3rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.05); }
+button:disabled { background: #8c959f; cursor: not-allowed; }
+.secondary { background: #1769aa; }
+.danger { background: #cf222e; }
+
+.action-row { display: flex; align-items: center; gap: 1rem; }
+.result-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.history-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+
+.hidden { display: none !important; }
+
+.error {
+  background: #fff1f0; border: 1px solid #ffa39e; color: #cf1322;
+  padding: 0.9rem 1.1rem; border-radius: 8px; margin: 0.8rem 0; font-size: 0.9rem;
+}
+
+.spinner {
+  display: inline-block; width: 18px; height: 18px;
+  border: 3px solid #d0d7de; border-top-color: #1f883d;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.table-wrapper {
+  max-height: 420px; overflow: auto;
+  border: 1px solid #d0d7de; border-radius: 8px; margin: 1rem 0;
+}
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+th, td {
+  border: 1px solid #d8dee4; padding: 0.45rem 0.6rem;
+  text-align: left; white-space: nowrap;
+}
+th { background: #f6f8fa; position: sticky; top: 0; }
+tbody tr:nth-child(even) { background: #fafbfc; }
+
+.row-actions { display: flex; gap: 0.5rem; }
+.row-actions button { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
+
+.gh-config { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+.gh-config summary { cursor: pointer; font-weight: 600; color: #1769aa; margin-bottom: 0.75rem; }
+.remember { display: flex; align-items: center; gap: 0.5rem; font-weight: 400; margin-top: 0.75rem; }
+.remember input { width: auto; }
+
+@media (max-width: 720px) {
+  .params, .gh-grid { grid-template-columns: 1fr; }
+  .action-row, .history-head { flex-direction: column; align-items: stretch; }
+}
