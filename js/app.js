@@ -1,8 +1,11 @@
 /* FinRep Flat Data Model Creator
- * Pyodide + storico CSV su GitHub con aggiornamento UI immediato.
+ * Pyodide + storico CSV su GitHub.
+ * La pagina viene ricaricata solo quando GitHub Pages espone davvero
+ * il file salvato o conferma la scomparsa del file eliminato.
  */
 
 const $ = (id) => document.getElementById(id);
+
 const fileInput = $("fileInput");
 const processBtn = $("processBtn");
 const spinner = $("spinner");
@@ -32,9 +35,10 @@ let initializationError = null;
 let lastCSV = "";
 let lastFileName = "output.csv";
 let isProcessing = false;
-let historyCache = new Map();
 
 const TOKEN_KEY = "fdm_github_token";
+const DEPLOY_POLL_INTERVAL_MS = 3000;
+const DEPLOY_TIMEOUT_MS = 180000;
 
 function showError(message) {
   errorBox.textContent = message;
@@ -59,6 +63,7 @@ function setBusy(isBusy, label = "Elabora file") {
   spinner.hidden = !isBusy;
   spinner.classList.toggle("hidden", !isBusy);
   spinner.style.display = isBusy ? "inline-block" : "none";
+  spinner.setAttribute("aria-hidden", String(!isBusy));
   processBtn.disabled = isBusy;
   processBtn.textContent = isBusy ? label : "Elabora file";
 }
@@ -67,6 +72,10 @@ function bytesLabel(size) {
   if (size < 1024) return `${size} B`;
   if (size < 1048576) return `${(size / 1024).toFixed(1)} KB`;
   return `${(size / 1048576).toFixed(1)} MB`;
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function renderTable(records) {
@@ -96,24 +105,37 @@ function renderTable(records) {
     });
     tbody.appendChild(row);
   });
+
   resultTable.appendChild(tbody);
 }
+
+/* --------------------------------------------------------------------------
+   Inizializzazione silenziosa del motore Python
+   -------------------------------------------------------------------------- */
 
 const pythonReady = (async () => {
   try {
     pyodide = await loadPyodide({
       indexURL: "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/"
     });
+
     await pyodide.loadPackage("micropip");
     const micropip = pyodide.pyimport("micropip");
+
     try {
       await micropip.install("openpyxl");
     } finally {
       micropip.destroy();
     }
 
-    const response = await fetch("./python/finrep_processor.py", { cache: "no-cache" });
-    if (!response.ok) throw new Error(`Motore Python non trovato: HTTP ${response.status}`);
+    const response = await fetch("./python/finrep_processor.py", {
+      cache: "no-cache"
+    });
+
+    if (!response.ok) {
+      throw new Error(`Motore Python non trovato: HTTP ${response.status}`);
+    }
+
     await pyodide.runPythonAsync(await response.text());
 
     processBtn.disabled = false;
@@ -127,14 +149,21 @@ const pythonReady = (async () => {
     throw error;
   }
 })();
+
 pythonReady.catch(() => {});
+
+/* --------------------------------------------------------------------------
+   GitHub Contents API
+   -------------------------------------------------------------------------- */
 
 function ghConfig() {
   return {
     owner: (ghOwner.value || "").trim(),
     repo: (ghRepo.value || "").trim(),
     branch: (ghBranch.value || "main").trim(),
-    folder: (ghFolder.value || "csv-history").trim().replace(/^\/+|\/+$/g, ""),
+    folder: (ghFolder.value || "csv-history")
+      .trim()
+      .replace(/^\/+|\/+$/g, ""),
     token: (ghToken.value || "").trim()
   };
 }
@@ -148,75 +177,96 @@ function ghHeaders(config, authenticated = false) {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28"
   };
+
   if (authenticated && config.token) {
     headers.Authorization = `Bearer ${config.token}`;
   }
+
   return headers;
 }
 
 function toBase64(value) {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
-  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
   return btoa(binary);
 }
 
-async function ghGetSha(config, fileName) {
-  const cached = historyCache.get(fileName);
-  if (cached?.sha) return cached.sha;
+async function ghGetFile(config, fileName) {
+  const url = `${ghApiBase(config)}/${encodeURIComponent(fileName)}?ref=${encodeURIComponent(config.branch)}&v=${Date.now()}`;
+  const response = await fetch(url, {
+    headers: ghHeaders(config, true),
+    cache: "no-store"
+  });
 
-  const url = `${ghApiBase(config)}/${encodeURIComponent(fileName)}?ref=${encodeURIComponent(config.branch)}`;
-  const response = await fetch(url, { headers: ghHeaders(config, true) });
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`Lettura file fallita: HTTP ${response.status}`);
-  return (await response.json()).sha || null;
+  if (!response.ok) {
+    throw new Error(`Lettura file fallita: HTTP ${response.status}`);
+  }
+
+  return response.json();
 }
 
 async function ghSaveCSV(config, fileName, csvText) {
-  const existingSha = await ghGetSha(config, fileName);
+  const currentFile = await ghGetFile(config, fileName);
   const url = `${ghApiBase(config)}/${encodeURIComponent(fileName)}`;
+
   const requestBody = {
-    message: `${existingSha ? "Aggiorna" : "Aggiungi"} CSV: ${fileName}`,
+    message: `${currentFile ? "Aggiorna" : "Aggiungi"} CSV: ${fileName}`,
     content: toBase64("\uFEFF" + csvText),
     branch: config.branch
   };
-  if (existingSha) requestBody.sha = existingSha;
+
+  if (currentFile?.sha) {
+    requestBody.sha = currentFile.sha;
+  }
 
   const response = await fetch(url, {
     method: "PUT",
-    headers: { ...ghHeaders(config, true), "Content-Type": "application/json" },
+    headers: {
+      ...ghHeaders(config, true),
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify(requestBody)
   });
 
   if (!response.ok) {
-    throw new Error(`Salvataggio fallito: HTTP ${response.status} ${await response.text()}`);
+    throw new Error(
+      `Salvataggio fallito: HTTP ${response.status} ${await response.text()}`
+    );
   }
 
   const result = await response.json();
+
   return {
     name: fileName,
-    sha: result.content?.sha || existingSha,
-    size: new Blob(["\uFEFF", csvText]).size,
-    download_url: result.content?.download_url || null,
-    type: "file",
-    wasUpdate: Boolean(existingSha)
+    sha: result.content?.sha || null,
+    wasUpdate: Boolean(currentFile)
   };
 }
 
 async function ghListCSV(config) {
-  const url = `${ghApiBase(config)}?ref=${encodeURIComponent(config.branch)}`;
+  const url = `${ghApiBase(config)}?ref=${encodeURIComponent(config.branch)}&v=${Date.now()}`;
   const response = await fetch(url, {
     headers: ghHeaders(config, Boolean(config.token)),
     cache: "no-store"
   });
 
   if (response.status === 404) return [];
-  if (!response.ok) throw new Error(`Elenco non disponibile: HTTP ${response.status}`);
+  if (!response.ok) {
+    throw new Error(`Elenco non disponibile: HTTP ${response.status}`);
+  }
 
   const data = await response.json();
   if (!Array.isArray(data)) return [];
+
   return data
-    .filter((item) => item.type === "file" && item.name.toLowerCase().endsWith(".csv"))
+    .filter(
+      (item) =>
+        item.type === "file" && item.name.toLowerCase().endsWith(".csv")
+    )
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -224,7 +274,10 @@ async function ghDeleteCSV(config, item) {
   const url = `${ghApiBase(config)}/${encodeURIComponent(item.name)}`;
   const response = await fetch(url, {
     method: "DELETE",
-    headers: { ...ghHeaders(config, true), "Content-Type": "application/json" },
+    headers: {
+      ...ghHeaders(config, true),
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify({
       message: `Elimina CSV: ${item.name}`,
       sha: item.sha,
@@ -233,16 +286,86 @@ async function ghDeleteCSV(config, item) {
   });
 
   if (!response.ok) {
-    throw new Error(`Eliminazione fallita: HTTP ${response.status} ${await response.text()}`);
+    throw new Error(
+      `Eliminazione fallita: HTTP ${response.status} ${await response.text()}`
+    );
   }
+}
+
+function pagesFileUrl(config, fileName) {
+  const expectedProjectPath = `/${config.repo}/${config.folder}/${encodeURIComponent(fileName)}`;
+
+  if (window.location.hostname.endsWith("github.io")) {
+    return `${window.location.origin}${expectedProjectPath}`;
+  }
+
+  return `${window.location.origin}/${config.folder}/${encodeURIComponent(fileName)}`;
+}
+
+/*
+ * Attende che GitHub Pages esponga davvero il file salvato.
+ * Per evitare falsi positivi controlla sia lo status 200 sia il contenuto CSV.
+ */
+async function waitForPagesSave(config, fileName, expectedCSV) {
+  const url = pagesFileUrl(config, fileName);
+  const normalizedExpected = expectedCSV.replace(/^\uFEFF/, "");
+  const start = Date.now();
+
+  while (Date.now() - start < DEPLOY_TIMEOUT_MS) {
+    try {
+      const response = await fetch(`${url}?deployCheck=${Date.now()}`, {
+        cache: "no-store"
+      });
+
+      if (response.ok) {
+        const actual = (await response.text()).replace(/^\uFEFF/, "");
+        if (actual === normalizedExpected) {
+          return;
+        }
+      }
+    } catch (error) {
+      console.debug("GitHub Pages non ancora aggiornato", error);
+    }
+
+    await sleep(DEPLOY_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(
+    "Il commit GitHub è stato creato, ma GitHub Pages non ha completato il deployment entro 3 minuti. Premi Aggiorna elenco tra poco."
+  );
+}
+
+/* Attende che il file eliminato non sia più raggiungibile da GitHub Pages. */
+async function waitForPagesDelete(config, fileName) {
+  const url = pagesFileUrl(config, fileName);
+  const start = Date.now();
+
+  while (Date.now() - start < DEPLOY_TIMEOUT_MS) {
+    try {
+      const response = await fetch(`${url}?deployCheck=${Date.now()}`, {
+        cache: "no-store"
+      });
+
+      if (response.status === 404) {
+        return;
+      }
+    } catch (error) {
+      console.debug("Verifica cancellazione GitHub Pages", error);
+    }
+
+    await sleep(DEPLOY_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(
+    "Il commit di eliminazione è stato creato, ma GitHub Pages non ha completato il deployment entro 3 minuti. Premi Aggiorna elenco tra poco."
+  );
 }
 
 function ghDownload(item) {
   const config = ghConfig();
-  const rawUrl = item.download_url ||
-    `https://raw.githubusercontent.com/${config.owner}/${config.repo}/${config.branch}/${config.folder}/${encodeURIComponent(item.name)}`;
+  const url = pagesFileUrl(config, item.name);
   const link = document.createElement("a");
-  link.href = `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}v=${Date.now()}`;
+  link.href = `${url}?v=${Date.now()}`;
   link.download = item.name;
   link.target = "_blank";
   link.rel = "noopener";
@@ -251,25 +374,12 @@ function ghDownload(item) {
   link.remove();
 }
 
-function emptyHistoryMessage() {
-  const body = historyTable.querySelector("tbody");
-  if (historyCache.size || body.children.length) return;
-  const row = document.createElement("tr");
-  row.dataset.empty = "true";
-  const cell = document.createElement("td");
-  cell.colSpan = 3;
-  cell.textContent = "Nessun CSV presente nello storico.";
-  row.appendChild(cell);
-  body.appendChild(row);
-}
-
-function removeEmptyMessage() {
-  historyTable.querySelector('tbody tr[data-empty="true"]')?.remove();
-}
+/* --------------------------------------------------------------------------
+   Storico CSV
+   -------------------------------------------------------------------------- */
 
 function createHistoryRow(item) {
   const row = document.createElement("tr");
-  row.dataset.fileName = item.name;
 
   const nameCell = document.createElement("td");
   nameCell.textContent = item.name;
@@ -284,36 +394,57 @@ function createHistoryRow(item) {
   const downloadButton = document.createElement("button");
   downloadButton.textContent = "Scarica";
   downloadButton.className = "secondary";
-  downloadButton.onclick = () => ghDownload(historyCache.get(item.name) || item);
+  downloadButton.onclick = () => ghDownload(item);
 
   const deleteButton = document.createElement("button");
   deleteButton.textContent = "Elimina";
   deleteButton.className = "danger";
+
   deleteButton.onclick = async () => {
     const config = ghConfig();
-    const currentItem = historyCache.get(item.name) || item;
+
     if (!config.token) {
       alert("Inserisci il token GitHub per poter eliminare.");
       return;
     }
-    if (!confirm(`Eliminare definitivamente \"${item.name}\" dallo storico?`)) return;
 
-    // L'elemento sparisce subito. Se GitHub fallisce, viene ripristinato.
-    const parent = row.parentNode;
-    const nextSibling = row.nextSibling;
-    row.remove();
-    historyCache.delete(item.name);
-    emptyHistoryMessage();
+    if (!confirm(`Eliminare definitivamente \"${item.name}\" dallo storico?`)) {
+      return;
+    }
+
+    const originalDeleteText = deleteButton.textContent;
+    const originalRowOpacity = row.style.opacity;
+
+    deleteButton.disabled = true;
+    downloadButton.disabled = true;
+    deleteButton.textContent = "Eliminazione...";
+    deleteButton.setAttribute("aria-busy", "true");
+    row.style.opacity = "0.65";
+
+    archiveStatus.textContent =
+      `Eliminazione di ${item.name}: creazione del commit GitHub...`;
 
     try {
-      await ghDeleteCSV(config, currentItem);
-      archiveStatus.textContent = `CSV eliminato dallo storico: ${item.name}`;
+      await ghDeleteCSV(config, item);
+
+      deleteButton.textContent = "Attesa deployment...";
+      archiveStatus.textContent =
+        `Commit creato. Attendo che GitHub Pages elimini ${item.name}...`;
+
+      await waitForPagesDelete(config, item.name);
+
+      archiveStatus.textContent =
+        `Eliminazione completata e pubblicata: ${item.name}. Aggiornamento pagina...`;
+
+      window.location.reload();
     } catch (error) {
-      removeEmptyMessage();
-      if (nextSibling) parent.insertBefore(row, nextSibling);
-      else parent.appendChild(row);
-      historyCache.set(item.name, currentItem);
-      alert(error.message);
+      console.error("Errore eliminazione GitHub", error);
+      row.style.opacity = originalRowOpacity;
+      deleteButton.disabled = false;
+      downloadButton.disabled = false;
+      deleteButton.textContent = originalDeleteText;
+      deleteButton.removeAttribute("aria-busy");
+      archiveStatus.textContent = `Eliminazione non completata: ${error.message}`;
     }
   };
 
@@ -323,34 +454,32 @@ function createHistoryRow(item) {
   return row;
 }
 
-function upsertHistoryItem(item) {
-  historyCache.set(item.name, item);
-  removeEmptyMessage();
-
-  const body = historyTable.querySelector("tbody");
-  const existingRow = [...body.querySelectorAll("tr")]
-    .find((row) => row.dataset.fileName === item.name);
-  const newRow = createHistoryRow(item);
-
-  if (existingRow) existingRow.replaceWith(newRow);
-  else body.prepend(newRow);
-}
-
 function renderHistory(items) {
   const body = historyTable.querySelector("tbody");
   body.innerHTML = "";
-  historyCache = new Map(items.map((item) => [item.name, item]));
+
+  if (!items.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.textContent = "Nessun CSV presente nello storico.";
+    row.appendChild(cell);
+    body.appendChild(row);
+    return;
+  }
+
   items.forEach((item) => body.appendChild(createHistoryRow(item)));
-  emptyHistoryMessage();
 }
 
 async function loadHistory() {
   historyError.classList.add("hidden");
   const config = ghConfig();
+
   if (!config.owner || !config.repo) return;
 
   refreshHistoryBtn.disabled = true;
   refreshHistoryBtn.textContent = "Aggiornamento...";
+
   try {
     renderHistory(await ghListCSV(config));
   } catch (error) {
@@ -369,30 +498,51 @@ async function saveCurrentToGithub() {
   }
 
   const config = ghConfig();
+
   if (!config.owner || !config.repo) {
     archiveStatus.textContent = "Configura owner e repository GitHub.";
     return;
   }
+
   if (!config.token) {
-    archiveStatus.textContent = "Inserisci il token GitHub per salvare nello storico.";
+    archiveStatus.textContent =
+      "Inserisci il token GitHub per salvare nello storico.";
     return;
   }
 
+  const originalButtonText = saveGithubBtn.textContent;
+
   saveGithubBtn.disabled = true;
-  archiveStatus.textContent = "Salvataggio nello storico GitHub...";
+  saveGithubBtn.textContent = "Salvataggio...";
+  saveGithubBtn.setAttribute("aria-busy", "true");
+  archiveStatus.textContent = "Creazione del commit GitHub in corso...";
 
   try {
-    const item = await ghSaveCSV(config, lastFileName, lastCSV);
+    const result = await ghSaveCSV(config, lastFileName, lastCSV);
 
-    // Aggiornamento immediato della tabella, senza ricaricare tutta la cartella.
-    upsertHistoryItem(item);
-    archiveStatus.textContent = `CSV ${item.wasUpdate ? "sovrascritto" : "salvato"}: ${item.name}`;
+    saveGithubBtn.textContent = "Attesa deployment...";
+    archiveStatus.textContent =
+      `Commit creato. Attendo che GitHub Pages pubblichi ${lastFileName}...`;
+
+    await waitForPagesSave(config, lastFileName, lastCSV);
+
+    archiveStatus.textContent = result.wasUpdate
+      ? `CSV sovrascritto e pubblicato: ${lastFileName}. Aggiornamento pagina...`
+      : `CSV salvato e pubblicato: ${lastFileName}. Aggiornamento pagina...`;
+
+    window.location.reload();
   } catch (error) {
-    archiveStatus.textContent = `Errore nel salvataggio: ${error.message}`;
-  } finally {
+    console.error("Errore salvataggio GitHub", error);
+    archiveStatus.textContent = `Salvataggio non completato: ${error.message}`;
     saveGithubBtn.disabled = false;
+    saveGithubBtn.textContent = originalButtonText;
+    saveGithubBtn.removeAttribute("aria-busy");
   }
 }
+
+/* --------------------------------------------------------------------------
+   Token nel browser
+   -------------------------------------------------------------------------- */
 
 function loadSavedToken() {
   try {
@@ -416,13 +566,20 @@ ghRemember.addEventListener("change", () => {
 
 ghToken.addEventListener("input", () => {
   if (ghRemember.checked) {
-    try { localStorage.setItem(TOKEN_KEY, ghToken.value.trim()); } catch (_) {}
+    try {
+      localStorage.setItem(TOKEN_KEY, ghToken.value.trim());
+    } catch (_) {}
   }
 });
+
+/* --------------------------------------------------------------------------
+   Eventi
+   -------------------------------------------------------------------------- */
 
 [startNameInput, prefixInput, endNameInput].forEach((input) => {
   input.addEventListener("input", updatePreview);
 });
+
 refreshHistoryBtn.addEventListener("click", loadHistory);
 saveGithubBtn.addEventListener("click", saveCurrentToGithub);
 
@@ -434,6 +591,7 @@ processBtn.addEventListener("click", async () => {
   archiveStatus.textContent = "";
 
   const file = fileInput.files[0];
+
   if (!file) {
     showError("Seleziona prima un file Excel .xlsx.");
     return;
@@ -444,42 +602,72 @@ processBtn.addEventListener("click", async () => {
 
   try {
     await pythonReady;
-    if (initializationError) throw initializationError;
+
+    if (initializationError) {
+      throw initializationError;
+    }
+
     processBtn.textContent = "Elaborazione...";
 
-    pyodide.FS.writeFile(virtualPath, new Uint8Array(await file.arrayBuffer()));
+    pyodide.FS.writeFile(
+      virtualPath,
+      new Uint8Array(await file.arrayBuffer())
+    );
+
     pyodide.globals.set("workbook_path_from_js", virtualPath);
+
     const result = JSON.parse(
       await pyodide.runPythonAsync("process_finrep(workbook_path_from_js)")
     );
 
     if (!result.records?.length) {
-      showError("Elaborazione completata, ma nessun record valido è stato trovato.");
+      showError(
+        "Elaborazione completata, ma nessun record valido è stato trovato."
+      );
       return;
     }
 
     lastCSV = result.csv;
     lastFileName = outputName();
+
     renderTable(result.records);
-    recordCount.textContent = `Record totali generati: ${result.count} (anteprima delle prime 200 righe)`;
+    recordCount.textContent =
+      `Record totali generati: ${result.count} ` +
+      "(anteprima delle prime 200 righe)";
+
     resultBox.classList.remove("hidden");
-    archiveStatus.textContent = "CSV pronto. Puoi scaricarlo o salvarlo nello storico GitHub.";
+    archiveStatus.textContent =
+      "CSV pronto. Puoi scaricarlo o salvarlo nello storico GitHub.";
   } catch (error) {
     console.error(error);
+
     const prefix = initializationError
       ? "Impossibile preparare il motore Python"
       : "Errore durante l'elaborazione Python";
+
     showError(`${prefix}: ${error.message}`);
   } finally {
     setBusy(false);
-    try { if (pyodide?.FS) pyodide.FS.unlink(virtualPath); } catch (_) {}
-    try { if (pyodide?.globals) pyodide.globals.delete("workbook_path_from_js"); } catch (_) {}
+
+    try {
+      if (pyodide?.FS) pyodide.FS.unlink(virtualPath);
+    } catch (_) {}
+
+    try {
+      if (pyodide?.globals) {
+        pyodide.globals.delete("workbook_path_from_js");
+      }
+    } catch (_) {}
   }
 });
 
 downloadBtn.addEventListener("click", () => {
   if (!lastCSV) return;
-  const blob = new Blob(["\uFEFF", lastCSV], { type: "text/csv;charset=utf-8;" });
+
+  const blob = new Blob(["\uFEFF", lastCSV], {
+    type: "text/csv;charset=utf-8;"
+  });
+
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -489,6 +677,10 @@ downloadBtn.addEventListener("click", () => {
   link.remove();
   URL.revokeObjectURL(url);
 });
+
+/* --------------------------------------------------------------------------
+   Avvio
+   -------------------------------------------------------------------------- */
 
 setBusy(false);
 updatePreview();
