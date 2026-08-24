@@ -361,17 +361,38 @@ async function waitForPagesDelete(config, fileName) {
   );
 }
 
-function ghDownload(item) {
+async function ghDownload(item) {
   const config = ghConfig();
-  const url = pagesFileUrl(config, item.name);
+
+  const rawUrl =
+    `https://raw.githubusercontent.com/` +
+    `${config.owner}/${config.repo}/${config.branch}/` +
+    `${config.folder}/${encodeURIComponent(item.name)}` +
+    `?v=${Date.now()}`;
+
+  const response = await fetch(rawUrl, {
+    method: "GET",
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Download non riuscito: HTTP ${response.status}`
+    );
+  }
+
+  const csvBlob = await response.blob();
+  const objectUrl = URL.createObjectURL(csvBlob);
+
   const link = document.createElement("a");
-  link.href = `${url}?v=${Date.now()}`;
+  link.href = objectUrl;
   link.download = item.name;
-  link.target = "_blank";
-  link.rel = "noopener";
+
   document.body.appendChild(link);
   link.click();
   link.remove();
+
+  URL.revokeObjectURL(objectUrl);
 }
 
 /* --------------------------------------------------------------------------
@@ -394,7 +415,22 @@ function createHistoryRow(item) {
   const downloadButton = document.createElement("button");
   downloadButton.textContent = "Scarica";
   downloadButton.className = "secondary";
-  downloadButton.onclick = () => ghDownload(item);
+  downloadButton.onclick = async () => {
+  const originalText = downloadButton.textContent;
+
+  downloadButton.disabled = true;
+  downloadButton.textContent = "Scaricamento...";
+
+  try {
+    await ghDownload(item);
+  } catch (error) {
+    console.error("Errore download CSV", error);
+    alert(error.message);
+  } finally {
+    downloadButton.disabled = false;
+    downloadButton.textContent = originalText;
+  }
+};
 
   const deleteButton = document.createElement("button");
   deleteButton.textContent = "Elimina";
