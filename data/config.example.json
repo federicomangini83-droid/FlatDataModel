@@ -1,0 +1,9 @@
+{
+  "description": "Esempio di file di configurazione statica per future tabelle di lookup. Non è un database, solo dati statici caricabili via fetch().",
+  "lookups": {
+    "esempioCodiceConto": {
+      "0010": "Descrizione esempio conto 0010",
+      "0020": "Descrizione esempio conto 0020"
+    }
+  }
+}
