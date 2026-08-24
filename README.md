@@ -1,6 +1,7 @@
 # FinRep Flat Data Model Creator
 
 Applicazione **client-side** (HTML + CSS + JavaScript) che trasforma un file Excel strutturato (workbook FinRep con più fogli) in un file CSV "flat" di mapping.
+L'applicazione si trova a questo link https://federicomangini83-droid.github.io/FlatDataModel/.
 
 ## Come funziona
 
