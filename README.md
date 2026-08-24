@@ -4,7 +4,7 @@
 
 L'applicazione si trova a questo link:
 
-**[https://federicomangini83-droid.github.io/FlatDataModel/](https://federicomangini83-droid.github.io/FlatDataModel/)**
+**[Open App](https://federicomangini83-droid.github.io/FlatDataModel/)**
 
 ---
 
