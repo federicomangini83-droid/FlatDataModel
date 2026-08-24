@@ -1,0 +1,11 @@
+{
+  "users": [
+    {
+      "username": "federico",
+      "enabled": true,
+      "salt": "GENERATO_DALLO_SCRIPT",
+      "iterations": 310000,
+      "passwordHash": "GENERATO_DALLO_SCRIPT"
+    }
+  ]
+}
