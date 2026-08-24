@@ -1,5 +1,7 @@
 # FlatDataModel con storico CSV e REST API
 
+Link applicazione https://federicomangini83-droid.github.io/FlatDataModel/
+
 Il pacchetto contiene:
 
 - `frontend/`: applicazione da pubblicare su GitHub Pages;
